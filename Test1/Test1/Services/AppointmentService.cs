@@ -111,7 +111,7 @@ public class AppointmentService : IAppointmentService
                 
         }
         
-        appointment.Services = new List<Appointment_Service>();
+        appointment.Services = new List<AppointmentServiceDTO>();
 
         const string command2 = @"
             SELECT s.name, sa.service_fee
@@ -125,7 +125,7 @@ public class AppointmentService : IAppointmentService
         {
             while (await reader2.ReadAsync())
             {
-                appointment.Services.Add(new Appointment_Service
+                appointment.Services.Add(new AppointmentServiceDTO
                 {
                     Name = reader2.GetString(0),
                     ServiceFee = reader2.GetDecimal(1)
@@ -136,6 +136,62 @@ public class AppointmentService : IAppointmentService
         return appointment;
         
     }
-    
-    
+
+    public async Task CreateAppointment(AppointmentCreationDTO appointment)
+    {
+        await using var conn = new SqlConnection(_connectionString);
+        await conn.OpenAsync();
+
+        if (await AppointmentExist(appointment.AppointmentId, conn))
+            throw new ConflictException("Appointment Already Exist");
+        
+        if (!await PatientExist(appointment.PatientId, conn))
+            throw new NotFoundException("Patient not found");
+        var doctorId = await GetDoctorId(appointment.PWZ, conn);
+        var serviceIDs = new List<int>();
+        foreach (var service in appointment.Services)
+        {
+            serviceIDs.Add(await GetServiceIdByName(service.Name, conn));
+        }
+        
+        var transaction = conn.BeginTransaction();
+        try
+        {
+            const string command1 = @"
+            Insert into Appointment (appointment_id, patient_id, doctor_id, date)
+            values (@IdAppointment, @IdPatient, @IdDoctor, @Date);
+            ";
+            await using var cmd1 = new SqlCommand(command1, conn, transaction);
+            cmd1.Parameters.AddWithValue("@IdAppointment", appointment.AppointmentId);
+            cmd1.Parameters.AddWithValue("@IdPatient", appointment.PatientId);
+            cmd1.Parameters.AddWithValue("@IdDoctor", doctorId);
+            cmd1.Parameters.AddWithValue("@Date", DateTime.Now);
+            await cmd1.ExecuteNonQueryAsync();
+
+            const string command2 = @"
+                Insert into Appointment_Service (appointment_id, service_id, service_fee)
+                values (@IdAppointment, @IdService, @ServiceFee);
+                ";
+            await using var cmd2 = new SqlCommand(command2, conn, transaction);
+            cmd2.Parameters.AddWithValue("@IdAppointment", appointment.AppointmentId);
+            for (var i = 0; i < serviceIDs.Count; i++)
+            {
+                cmd2.Parameters.Clear();
+                cmd2.Parameters.AddWithValue("@IdService", serviceIDs[i]);
+                cmd2.Parameters.AddWithValue("@ServiceFee", appointment.Services[i].ServiceFee);
+                await cmd2.ExecuteNonQueryAsync();
+            }
+        }
+        catch (Exception)
+        {
+            transaction.Rollback();
+            throw;
+        }
+        finally
+        {
+            transaction.Commit();
+            conn.Close();
+        }
+        
+    }
 }

@@ -35,4 +35,28 @@ public class AppointmentsController : ControllerBase
                 new { error = "Internal server error" });
         }
     }
+    
+    [HttpPost]
+    public async Task<IActionResult> CreateAppointment(AppointmentCreationDTO appointment)
+    {
+        try
+        {
+            await _appointmentService.CreateAppointment(appointment);
+            return Created("","Appointment Created");
+        }
+        catch (NotFoundException ex)
+        {
+            return NotFound(ex.Message);
+        }
+        catch (ConflictException ex)
+        {
+            return Conflict(ex.Message);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex);
+            return StatusCode(StatusCodes.Status500InternalServerError,
+                new { error = "Internal server error" });
+        }
+    }
 }
