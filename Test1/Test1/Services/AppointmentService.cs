@@ -173,25 +173,23 @@ public class AppointmentService : IAppointmentService
                 values (@IdAppointment, @IdService, @ServiceFee);
                 ";
             await using var cmd2 = new SqlCommand(command2, conn, transaction);
-            cmd2.Parameters.AddWithValue("@IdAppointment", appointment.AppointmentId);
             for (var i = 0; i < serviceIDs.Count; i++)
             {
                 cmd2.Parameters.Clear();
+                cmd2.Parameters.AddWithValue("@IdAppointment", appointment.AppointmentId);
                 cmd2.Parameters.AddWithValue("@IdService", serviceIDs[i]);
                 cmd2.Parameters.AddWithValue("@ServiceFee", appointment.Services[i].ServiceFee);
                 await cmd2.ExecuteNonQueryAsync();
             }
+            transaction.Commit();
+            conn.Close();
         }
         catch (Exception)
         {
             transaction.Rollback();
             throw;
         }
-        finally
-        {
-            transaction.Commit();
-            conn.Close();
-        }
+        
         
     }
 }
